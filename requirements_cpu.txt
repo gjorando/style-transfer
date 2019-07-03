@@ -1,0 +1,4 @@
+pytorch-cpu
+torchvision-cpu
+pillow
+matplotlib

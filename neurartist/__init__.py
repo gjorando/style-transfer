@@ -1,8 +1,7 @@
-from .neural_style import NeuralStyle
-from .neural_style import gram_matrix
-from .neural_style import input_transforms
-from .neural_style import output_transforms
+from . import models
+from . import losses
+from . import utils
 
 __version__ = 0.1
 
-del neural_style
+__all__ = ["models", "losses", "utils"]

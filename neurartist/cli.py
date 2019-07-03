@@ -17,11 +17,12 @@ def main():
     num_epochs = 500
     show_every = 20
     trade_off = 3
-    random_init = True
+    normalization_term = None
+    random_init = False
 
     images = (Image.open(content_path), Image.open(style_path))
     transformed_images = [
-        neurartist.input_transforms(width)(i) for i in images
+        neurartist.utils.input_transforms(width)(i) for i in images
     ]
     if torch.cuda.is_available():
         transformed_images = (
@@ -37,7 +38,10 @@ def main():
         plt.axis("off")
         plt.show()
 
-    model = neurartist.NeuralStyle(trade_off=trade_off)
+    model = neurartist.models.NeuralStyle(
+        trade_off=trade_off,
+        normalization_term=normalization_term
+    )
 
     if random_init:
         output = torch.randn(content_image.size()).type_as(content_image.data)
@@ -46,12 +50,10 @@ def main():
     output.requires_grad_(True)
     optimizer = torch.optim.LBFGS([output])
 
-    content_targets = [
-        f.detach() for f in model(content_image)[0]
-    ]
-    style_targets = [
-        neurartist.gram_matrix(f).detach() for f in model(style_image)[1]
-    ]
+    content_targets, style_targets = model.get_images_targets(
+        content_image,
+        style_image
+    )
 
     content_losses = []
     style_losses = []
@@ -75,7 +77,7 @@ def main():
                 overall_loss
             ))
             if show_every and i % show_every == 0:
-                plt.imshow(neurartist.output_transforms(width)(
+                plt.imshow(neurartist.utils.output_transforms(width)(
                     output.clone().data[0].cpu().squeeze()
                 ))
                 plt.axis("off")
@@ -83,12 +85,14 @@ def main():
     except KeyboardInterrupt:
         print("Manual interruption")
 
-    plt.imshow(neurartist.output_transforms(width)(
+    output_image = neurartist.utils.output_transforms(width)(
         output.clone().data[0].cpu().squeeze()
-    ))
+    )
+    plt.imshow(output_image)
     plt.title("End result")
     plt.axis("off")
     plt.show()
+    output_image.save("outputs/result.png")
 
     plt.plot(content_losses, label="content")
     plt.plot(style_losses, label="style")

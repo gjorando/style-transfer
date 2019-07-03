@@ -1,90 +1,17 @@
 """
-Neural style model.
+Neural style models.
 
 @author: gjorandon
 """
 
 import torch
 import torchvision
+from neurartist import losses
+from neurartist import utils
+from neurartist import _package_manager as _pm
 
 
-def input_transforms(
-    width,
-    model_mean=(0.485, 0.456, 0.406),
-    model_std=(0.229, 0.224, 0.225),
-    max_value=255
-):
-    return torchvision.transforms.Compose([
-        torchvision.transforms.Resize(width),
-        torchvision.transforms.ToTensor(),
-        torchvision.transforms.Normalize(model_mean, model_std),
-        torchvision.transforms.Lambda(lambda x: x.mul_(max_value))
-    ])
-
-
-def output_transforms(
-    width,
-    model_mean=(0.485, 0.456, 0.406),
-    model_std=(0.229, 0.224, 0.225),
-    max_value=255
-):
-    return torchvision.transforms.Compose([
-        torchvision.transforms.Lambda(lambda x: x.mul_(1/max_value)),
-        torchvision.transforms.Normalize(
-            mean=[0]*3,
-            std=[1/std for std in model_std]),
-        torchvision.transforms.Normalize(
-            mean=[-mean for mean in model_mean],
-            std=[1]*3
-        ),
-        torchvision.transforms.Lambda(lambda x: x.clamp(0, 1)),
-        torchvision.transforms.ToPILImage()
-    ])
-
-
-def gram_matrix(array):
-    """
-    Compute the Gramians for each dimension of each image in a (n_batchs,
-    n_dims, size1, size2) tensor.
-    """
-
-    n_batchs, n_dims, height, width = array.size()
-
-    array_flattened = array.view(n_batchs, n_dims, -1)
-    G = torch.bmm(array_flattened, array_flattened.transpose(1, 2))
-
-    return G.div(height*width)
-
-
-def content_loss(weights, truth, pred):
-    """
-    Compute the standard neural style content loss.
-    """
-
-    if torch.cuda.is_available():
-        return sum([
-            weights[i]*torch.nn.MSELoss().cuda()(layer, truth[i])
-            for i, layer in enumerate(pred)
-        ])
-    else:
-        return sum([
-            weights[i]*torch.nn.MSELoss()(layer, truth[i])
-            for i, layer in enumerate(pred)
-        ])
-
-
-def style_loss(weights, truth, pred):
-    """
-    Compute the standard neural style style loss.
-    """
-
-    return content_loss(
-        weights,
-        truth,
-        [gram_matrix(layer) for layer in pred]
-    )
-
-
+@_pm.export
 class NeuralStyle(torch.nn.Module):
     """
     Base class for a standard neural style transfer, as described in "Image
@@ -98,7 +25,8 @@ class NeuralStyle(torch.nn.Module):
         style_layers=None,
         content_weights=None,
         style_weights=None,
-        trade_off=3
+        trade_off=3,
+        normalization_term=None
     ):
         """
         Not defining parameters with default value to None defines the standard
@@ -113,6 +41,7 @@ class NeuralStyle(torch.nn.Module):
         :param trade_off: trade-off between a more faithful content
         reconstruction (trade_off>1) or a more faithful style reconstruction
         (trade_off<1 and trade_off>0)
+        :param normalization_term: denominator for normalization of alpha/beta
         """
 
         super().__init__()
@@ -162,7 +91,9 @@ class NeuralStyle(torch.nn.Module):
         if style_weights is not None:
             self.style_weights = style_weights
 
-        self.alpha, self.beta = (w/(trade_off+1) for w in (trade_off, 1))
+        if normalization_term is None:
+            normalization_term = (trade_off+1)
+        self.alpha, self.beta = (w/normalization_term for w in (trade_off, 1))
         self.features = self.features.eval()
 
         for param in self.parameters():
@@ -172,6 +103,11 @@ class NeuralStyle(torch.nn.Module):
             self.cuda()
 
     def forward(self, input):
+        """
+        Forward pass: take a (1, n_dims, height, width) image and return its
+        content and style features as a (content_layers, style_layers) tuple.
+        """
+
         output_style = []
         output_content = []
         handles = []
@@ -202,14 +138,20 @@ class NeuralStyle(torch.nn.Module):
         style_targets,
         optimizer
     ):
+        """
+        Run a single epoch for the model: forward pass, loss computation and
+        back propagation towards the target image. The function returns
+        content, style and overall losses.
+        """
+
         content_output, style_output = self(target)
 
-        curr_content_loss = content_loss(
+        curr_content_loss = losses.content(
             self.content_weights,
             content_targets,
             content_output
         )
-        curr_style_loss = style_loss(
+        curr_style_loss = losses.style(
             self.style_weights,
             style_targets,
             style_output
@@ -221,3 +163,18 @@ class NeuralStyle(torch.nn.Module):
         optimizer.step(lambda: loss)
 
         return float(curr_content_loss), float(curr_style_loss), float(loss)
+
+    def get_images_targets(self, content_image, style_image):
+        """
+        Return the content layers of the content image and the style layers of
+        the style image.
+        """
+
+        content_targets = [
+            f.detach() for f in self(content_image)[0]
+        ]
+        style_targets = [
+            utils.gram_matrix(f).detach() for f in self(style_image)[1]
+        ]
+
+        return content_targets, style_targets
