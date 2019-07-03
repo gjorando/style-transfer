@@ -75,6 +75,7 @@ setup(
     entry_points={
         'console_scripts': ['neurartist=neurartist.cli:main']
     },
+    python_requires='>=3',
     classifiers=[
         'Development Status :: 2 - Pre-Alpha',
         'Environment :: Console',
