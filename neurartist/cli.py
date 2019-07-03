@@ -128,7 +128,7 @@ def main(
 
             if verbose:
                 print("{}/{}\t{:.2f}\t{:.2f}\t{:.2f}".format(
-                    str(i).zfill(len(str(num_epochs))),
+                    str(i+1).zfill(len(str(num_epochs))),
                     num_epochs,
                     content_loss,
                     style_loss,
