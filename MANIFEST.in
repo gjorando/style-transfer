@@ -1,0 +1,6 @@
+include requirements.txt
+include *.md
+include *.png
+global-exclude *.pyc
+global-exclude *.pyo
+global-exclude *.un~

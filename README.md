@@ -29,7 +29,6 @@ Please note that the a GPU is recommended, as CNN computations are pretty slow o
 
 ## TODO
 
-* CLI interface.
 * Implement the remaining parts of the jupyter notebook.
 * [Semantic segmentation as described in this article as to limit spillovers](https://arxiv.org/pdf/1703.07511.pdf): different approach than guided gram matrices, but same idea of using spatial guidance channels that describe a semantic segmentation of our images.
 * More deep-artistic algorithms.

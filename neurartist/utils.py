@@ -1,12 +1,13 @@
 """
 [DESCRIPTION]
 
-@author: gjorandon
+@author: gjorando
 """
 
 import torch
 import torchvision
 from neurartist import _package_manager as _pm
+from PIL import Image
 
 
 @_pm.export
@@ -58,3 +59,22 @@ def gram_matrix(array):
     G = torch.bmm(array_flattened, array_flattened.transpose(1, 2))
 
     return G.div(height*width)
+
+
+@_pm.export
+def load_input_images(content_path, style_path, img_size):
+    """
+    Load and transform input images.
+    """
+
+    images = (Image.open(content_path), Image.open(style_path))
+    transformed_images = [
+        input_transforms(img_size)(i) for i in images
+    ]
+    if torch.cuda.is_available():
+        transformed_images = (
+            i.unsqueeze(0).cuda() for i in transformed_images
+        )
+    else:
+        transformed_images = (i.unsqueeze(0) for i in transformed_images)
+    return transformed_images

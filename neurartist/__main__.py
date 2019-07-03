@@ -1,7 +1,7 @@
 """
 Main entrypoint.
 
-@author: gjorandon
+@author: gjorando
 """
 
 from neurartist import cli

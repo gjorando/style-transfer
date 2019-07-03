@@ -1,4 +1,4 @@
 pytorch
 torchvision
 pillow
-matplotlib
+click

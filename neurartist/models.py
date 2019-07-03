@@ -1,7 +1,7 @@
 """
 Neural style models.
 
-@author: gjorandon
+@author: gjorando
 """
 
 import torch

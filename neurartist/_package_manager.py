@@ -3,7 +3,7 @@ Defines a decorator that we can use to automatically handle our
 API exports. Based on an original idea from https://stackoverflow.com/
 questions/44834/can-someone-explain-all-in-python#answer-35710527.
 
-@author: gjorandon
+@author: gjorando
 """
 
 import sys

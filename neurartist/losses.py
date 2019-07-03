@@ -1,7 +1,7 @@
 """
 Losses for Neural Style transfer.
 
-@author: gjorandon
+@author: gjorando
 """
 
 import torch

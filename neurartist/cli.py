@@ -1,42 +1,100 @@
 """
 Entrypoints.
 
-@author: gjorandon
+@author: gjorando
 """
 
+import os
+from datetime import datetime
 import torch
-import matplotlib.pyplot as plt
-from PIL import Image
+import click
 import neurartist
 
 
-def main():
-    content_path = "./images/fruits.jpg"
-    style_path = "./images/cezanne2.jpg"
-    width = 512
-    num_epochs = 500
-    show_every = 20
-    trade_off = 3
+@click.command()
+@click.version_option(version=neurartist.__version__)
+@click.option(
+    "--content", "-c",
+    "content_path",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False),
+    help="Content image"
+)
+@click.option(
+    "--style", "-s",
+    "style_path",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False),
+    help="Style image"
+)
+@click.option(
+    "--output", "-o",
+    "output_path",
+    default="./",
+    type=click.Path(dir_okay=True, writable=True),
+    help="Output path"
+)
+@click.option(
+    "--size", "-S",
+    "img_size",
+    default=512,
+    type=click.INT,
+    help="Output size"
+)
+@click.option(
+    "--epochs", "-e",
+    "num_epochs",
+    default=250,
+    type=click.INT,
+    help="Maximum number of epochs"
+)
+@click.option(
+    "--trade-off",
+    "trade_off",
+    default=3,
+    type=click.INT,
+    help="Trade-off between content (>1) and style (<1) faithfullness"
+)
+@click.option(
+    "--verbose/--quiet",
+    default=True,
+    help="Verbose flag prints info during computation (default: verbose)"
+)
+def main(
+    content_path,
+    style_path,
+    output_path,
+    img_size,
+    num_epochs,
+    trade_off,
+    verbose
+):
+    """
+    Create beautiful art using deep learning.
+    """
+
+    if os.path.isdir(output_path):
+        output_path = os.path.join(
+            output_path,
+            "{}.png".format(datetime.now().strftime('%Y-%m-%dT%H:%M:%S'))
+        )
+
+    if verbose:
+        print(f"Content={content_path}")
+        print(f"Style={style_path}")
+        print(f"Output={output_path}")
+        print(f"Size={img_size}")
+        print(f"Epochs={num_epochs}")
+        print(f"Trade-off={trade_off}")
+
     normalization_term = None
     random_init = False
 
-    images = (Image.open(content_path), Image.open(style_path))
-    transformed_images = [
-        neurartist.utils.input_transforms(width)(i) for i in images
-    ]
-    if torch.cuda.is_available():
-        transformed_images = (
-            i.unsqueeze(0).cuda() for i in transformed_images
-        )
-    else:
-        transformed_images = (i.unsqueeze(0) for i in transformed_images)
-    content_image, style_image = transformed_images
-
-    for img, title in zip(images, ("content", "style")):
-        plt.imshow(img)
-        plt.title(title)
-        plt.axis("off")
-        plt.show()
+    content_image, style_image = neurartist.utils.load_input_images(
+        content_path,
+        style_path,
+        img_size
+    )
 
     model = neurartist.models.NeuralStyle(
         trade_off=trade_off,
@@ -55,9 +113,10 @@ def main():
         style_image
     )
 
-    content_losses = []
-    style_losses = []
-    overall_losses = []
+    if verbose:
+        print("Ctrl-C to prematurely end computations")
+        print("Epoch\tContent loss\tStyle loss\tOverall")
+
     try:
         for i in range(num_epochs):
             content_loss, style_loss, overall_loss = model.epoch(
@@ -66,37 +125,20 @@ def main():
                 style_targets,
                 optimizer
             )
-            content_losses.append(content_loss)
-            style_losses.append(style_loss)
-            overall_losses.append(overall_loss)
 
-            print("#{}: content_loss={}, style_loss={}, overall={}".format(
-                i,
-                content_loss,
-                style_loss,
-                overall_loss
-            ))
-            if show_every and i % show_every == 0:
-                plt.imshow(neurartist.utils.output_transforms(width)(
-                    output.clone().data[0].cpu().squeeze()
+            if verbose:
+                print("{}/{}\t{:.2f}\t{:.2f}\t{:.2f}".format(
+                    str(i).zfill(len(str(num_epochs))),
+                    num_epochs,
+                    content_loss,
+                    style_loss,
+                    overall_loss
                 ))
-                plt.axis("off")
-                plt.show()
     except KeyboardInterrupt:
-        print("Manual interruption")
+        if verbose:
+            print("Manual interruption")
 
-    output_image = neurartist.utils.output_transforms(width)(
+    output_image = neurartist.utils.output_transforms(img_size)(
         output.clone().data[0].cpu().squeeze()
     )
-    plt.imshow(output_image)
-    plt.title("End result")
-    plt.axis("off")
-    plt.show()
-    output_image.save("outputs/result.png")
-
-    plt.plot(content_losses, label="content")
-    plt.plot(style_losses, label="style")
-    plt.plot(overall_losses, label="overall")
-    plt.title("Losses over time")
-    plt.legend(loc=4)
-    plt.show
+    output_image.save(output_path)
