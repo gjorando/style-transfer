@@ -1,0 +1,4 @@
+pytorch>=1.1
+torchvision
+pillow
+matplotlib
