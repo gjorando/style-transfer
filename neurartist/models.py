@@ -52,10 +52,10 @@ class NeuralStyle(torch.nn.Module):
             # The next lines set default values for layer indexes and weights
 
             if content_layers is None:
-                # conv4_2
+                # ReLU of conv4_2
                 self.content_layers = [22]
             if style_layers is None:
-                # conv1_1, conv2_1, conv3_1, conv4_1, conv5_1
+                # ReLU of conv1_1, conv2_1, conv3_1, conv4_1, conv5_1
                 self.style_layers = [1, 6, 11, 20, 29]
             if content_weights is None:
                 self.content_weights = [1e0]
@@ -197,3 +197,35 @@ class NeuralStyle(torch.nn.Module):
         ]
 
         return content_targets, style_targets
+
+    def __repr__(self):
+        """
+        The representation of the class is redefined to be more concise.
+        """
+
+        main_str = self._get_name() + "(\n"
+
+        # Content
+        main_str += "  Content(\n"
+        for i, layer in enumerate(self.content_layers):
+            main_str += f"    ({layer}): "
+            main_str += f"{self.features[layer]}, "
+            main_str += f"weight={self.content_weights[i]:.3g}\n"
+        main_str += f"  ), weight={self.alpha}\n"
+
+        # Style
+        main_str += "  Style(\n"
+        for i, layer in enumerate(self.style_layers):
+            main_str += f"    ({layer}): "
+            main_str += f"{self.features[layer]}, "
+            main_str += f"weight={self.style_weights[i]:.3g}\n"
+        main_str += f"  ), weight={self.beta}\n"
+
+        # Extra
+        extra_repr = self.extra_repr()
+        if extra_repr:
+            extra_lines = extra_repr.split("\n")
+            main_str += "  " + "\n  ".join(extra_lines) + "\n"
+
+        main_str += ")"
+        return main_str
