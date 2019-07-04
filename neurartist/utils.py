@@ -15,11 +15,13 @@ def input_transforms(
     width,
     model_mean=(0.485, 0.456, 0.406),
     model_std=(0.229, 0.224, 0.225),
-    max_value=255
+    max_value=255,
+    device="cpu"
 ):
     return torchvision.transforms.Compose([
         torchvision.transforms.Resize(width),
         torchvision.transforms.ToTensor(),
+        torchvision.transforms.Lambda(lambda x: x.to(device)),
         torchvision.transforms.Normalize(model_mean, model_std),
         torchvision.transforms.Lambda(lambda x: x.mul_(max_value))
     ])
@@ -30,7 +32,7 @@ def output_transforms(
     width,
     model_mean=(0.485, 0.456, 0.406),
     model_std=(0.229, 0.224, 0.225),
-    max_value=255
+    max_value=255,
 ):
     return torchvision.transforms.Compose([
         torchvision.transforms.Lambda(lambda x: x.mul_(1/max_value)),
@@ -42,6 +44,7 @@ def output_transforms(
             std=[1]*3
         ),
         torchvision.transforms.Lambda(lambda x: x.clamp(0, 1)),
+        torchvision.transforms.Lambda(lambda x: x.cpu()),
         torchvision.transforms.ToPILImage()
     ])
 
@@ -62,19 +65,14 @@ def gram_matrix(array):
 
 
 @_pm.export
-def load_input_images(content_path, style_path, img_size):
+def load_input_images(content_path, style_path, img_size, device="cpu"):
     """
     Load and transform input images.
     """
 
     images = (Image.open(content_path), Image.open(style_path))
     transformed_images = [
-        input_transforms(img_size)(i) for i in images
+        input_transforms(img_size, device=device)(i).unsqueeze(0)
+        for i in images
     ]
-    if torch.cuda.is_available():
-        transformed_images = (
-            i.unsqueeze(0).cuda() for i in transformed_images
-        )
-    else:
-        transformed_images = (i.unsqueeze(0) for i in transformed_images)
     return transformed_images

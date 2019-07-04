@@ -56,6 +56,11 @@ import neurartist
     help="Trade-off between content (>1) and style (<1) faithfullness"
 )
 @click.option(
+    "--device", "-d",
+    default=None,
+    help="PyTorch device to use (default: cuda if available, otherwise cpu)"
+)
+@click.option(
     "--verbose/--quiet",
     default=True,
     help="Verbose flag prints info during computation (default: verbose)"
@@ -67,7 +72,8 @@ def main(
     img_size,
     num_epochs,
     trade_off,
-    verbose
+    verbose,
+    device
 ):
     """
     Create beautiful art using deep learning.
@@ -78,8 +84,14 @@ def main(
             output_path,
             "{}.png".format(datetime.now().strftime('%Y-%m-%dT%H:%M:%S'))
         )
+    if device is None:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    # Will fail if we use a non-valid device
+    torch.device(device)
 
     if verbose:
+        print(f"Device={device}")
         print(f"Content={content_path}")
         print(f"Style={style_path}")
         print(f"Output={output_path}")
@@ -93,12 +105,14 @@ def main(
     content_image, style_image = neurartist.utils.load_input_images(
         content_path,
         style_path,
-        img_size
+        img_size,
+        device
     )
 
     model = neurartist.models.NeuralStyle(
         trade_off=trade_off,
-        normalization_term=normalization_term
+        normalization_term=normalization_term,
+        device=device
     )
 
     if random_init:
@@ -139,6 +153,6 @@ def main(
             print("Manual interruption")
 
     output_image = neurartist.utils.output_transforms(img_size)(
-        output.clone().data[0].cpu().squeeze()
+        output.clone().data[0].squeeze()
     )
     output_image.save(output_path)

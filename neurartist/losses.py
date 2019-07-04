@@ -15,16 +15,12 @@ def content(weights, truth, pred):
     Compute the standard neural style content loss.
     """
 
-    if torch.cuda.is_available():
-        return sum([
-            weights[i]*torch.nn.MSELoss().cuda()(layer, truth[i])
-            for i, layer in enumerate(pred)
-        ])
-    else:
-        return sum([
-            weights[i]*torch.nn.MSELoss()(layer, truth[i])
-            for i, layer in enumerate(pred)
-        ])
+    mse_loss = torch.nn.MSELoss().to(truth[0].device)
+
+    return sum([
+        weights[i]*mse_loss(layer, truth[i])
+        for i, layer in enumerate(pred)
+    ])
 
 
 @_pm.export

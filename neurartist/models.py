@@ -26,7 +26,8 @@ class NeuralStyle(torch.nn.Module):
         content_weights=None,
         style_weights=None,
         trade_off=3,
-        normalization_term=None
+        normalization_term=None,
+        device="cpu"
     ):
         """
         Not defining parameters with default value to None defines the standard
@@ -99,8 +100,8 @@ class NeuralStyle(torch.nn.Module):
         for param in self.parameters():
             param.requires_grad_(False)
 
-        if torch.cuda.is_available():
-            self.cuda()
+        self.device = device
+        self.to(self.device)
 
     def forward(self, input):
         """
@@ -149,12 +150,12 @@ class NeuralStyle(torch.nn.Module):
         curr_content_loss = losses.content(
             self.content_weights,
             content_targets,
-            content_output
+            content_output,
         )
         curr_style_loss = losses.style(
             self.style_weights,
             style_targets,
-            style_output
+            style_output,
         )
         loss = self.alpha*curr_content_loss + self.beta*curr_style_loss
 

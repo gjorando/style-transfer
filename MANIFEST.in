@@ -1,3 +1,5 @@
+exclude outputs/
+exclude images/
 include requirements.txt
 include *.md
 include *.png
