@@ -18,11 +18,22 @@ def input_transforms(
     max_value=255,
     device="cpu"
 ):
+    """
+    Transforms on input images. Default model mean and standard deviations are
+    the ones from the ImageNet dataset, which was used to train VGG19. Default
+    max_value is 255, as VGG19 expects RGB [0, 255] images.
+    """
+
     return torchvision.transforms.Compose([
+        # Resize to target size
         torchvision.transforms.Resize(width),
+        # Convert Pillow image to torch tensor
         torchvision.transforms.ToTensor(),
+        # transfer tensor to the appropriate device
         torchvision.transforms.Lambda(lambda x: x.to(device)),
+        # normalize according to the model mean and standard deviation
         torchvision.transforms.Normalize(model_mean, model_std),
+        # convert [0, 1] values to [0, max_value] values
         torchvision.transforms.Lambda(lambda x: x.mul_(max_value))
     ])
 
@@ -34,8 +45,14 @@ def output_transforms(
     model_std=(0.229, 0.224, 0.225),
     max_value=255,
 ):
+    """
+    Transforms on output image.
+    """
+
     return torchvision.transforms.Compose([
+        # convert [0, max_value] values back to [0, 1] values
         torchvision.transforms.Lambda(lambda x: x.mul_(1/max_value)),
+        # Denormalize the tensor
         torchvision.transforms.Normalize(
             mean=[0]*3,
             std=[1/std for std in model_std]),
@@ -43,8 +60,11 @@ def output_transforms(
             mean=[-mean for mean in model_mean],
             std=[1]*3
         ),
+        # Clamp values to [0, 1]
         torchvision.transforms.Lambda(lambda x: x.clamp(0, 1)),
+        # Cransfer tensor to the CPU
         torchvision.transforms.Lambda(lambda x: x.cpu()),
+        # Convert torch tensor back to a Pillow image
         torchvision.transforms.ToPILImage()
     ])
 

@@ -26,7 +26,6 @@ class NeuralStyle(torch.nn.Module):
         content_weights=None,
         style_weights=None,
         trade_off=3,
-        normalization_term=None,
         device="cpu"
     ):
         """
@@ -34,7 +33,7 @@ class NeuralStyle(torch.nn.Module):
         neural style transfer used in the original article, with VGG19
         layers to represent both style and content.
 
-        :param features: a Sequential model containing our layers
+        :param features: a trained Sequential model containing our layers
         :param content_layers: index(es) of content layer(s)
         :param style_layers: index(es) of style layer(s)
         :param content_weights: weights for each content layer
@@ -42,29 +41,37 @@ class NeuralStyle(torch.nn.Module):
         :param trade_off: trade-off between a more faithful content
         reconstruction (trade_off>1) or a more faithful style reconstruction
         (trade_off<1 and trade_off>0)
-        :param normalization_term: denominator for normalization of alpha/beta
         """
 
         super().__init__()
 
         if features is None:
+            # The default features are the one described in the article
             self.features = torchvision.models.vgg19(pretrained=True).features
+
+            # The next lines set default values for layer indexes and weights
+
             if content_layers is None:
+                # conv4_2
                 self.content_layers = [22]
             if style_layers is None:
+                # conv1_1, conv2_1, conv3_1, conv4_1, conv5_1
                 self.style_layers = [1, 6, 11, 20, 29]
             if content_weights is None:
                 self.content_weights = [1e0]
             if style_weights is None:
+                # style weights found in another article (they work well)
                 self.style_weights = [
                     1e3/n**2
                     for n in [64, 128, 256, 512, 512]
                 ]
+                # the weights are normalized
                 self.style_weights = [
                     w/sum(self.style_weights)
                     for w in self.style_weights
                 ]
         else:
+            # If we use another set of features, we have no default values
             self.features = features
             if content_layers is None:
                 raise ValueError("""
@@ -83,6 +90,7 @@ class NeuralStyle(torch.nn.Module):
                 model is not None; style_weights should be defined
                 """)
 
+        # Define layer indexes and weights
         if content_layers is not None:
             self.content_layers = content_layers
         if style_layers is not None:
@@ -92,14 +100,18 @@ class NeuralStyle(torch.nn.Module):
         if style_weights is not None:
             self.style_weights = style_weights
 
-        if normalization_term is None:
-            normalization_term = (trade_off+1)
+        # Trade-off between content and style loss
+        normalization_term = (trade_off+1)
         self.alpha, self.beta = (w/normalization_term for w in (trade_off, 1))
+
+        # We use eval mode
         self.features = self.features.eval()
 
+        # The backward propagation isn't performed on the model parameters
         for param in self.parameters():
             param.requires_grad_(False)
 
+        # Set the device of the model
         self.device = device
         self.to(self.device)
 
@@ -111,8 +123,9 @@ class NeuralStyle(torch.nn.Module):
 
         output_style = []
         output_content = []
-        handles = []
 
+        # Add custom hooks that append the outputs of desired layers to a list
+        handles = []
         for i in self.style_layers:
             def hook(module, input, output):
                 output_style.append(output)
@@ -126,8 +139,10 @@ class NeuralStyle(torch.nn.Module):
                 self.features[i].register_forward_hook(hook)
             )
 
+        # Perform the forward pass itself
         self.features(input)
 
+        # Remove the custom hooks
         [handle.remove() for handle in handles]
 
         return output_content, output_style
@@ -145,8 +160,10 @@ class NeuralStyle(torch.nn.Module):
         content, style and overall losses.
         """
 
+        # Forward pass
         content_output, style_output = self(target)
 
+        # Compute losses
         curr_content_loss = losses.content(
             self.content_weights,
             content_targets,
@@ -159,6 +176,7 @@ class NeuralStyle(torch.nn.Module):
         )
         loss = self.alpha*curr_content_loss + self.beta*curr_style_loss
 
+        # Back propagation
         optimizer.zero_grad()
         loss.backward()
         optimizer.step(lambda: loss)

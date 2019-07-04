@@ -79,15 +79,18 @@ def main(
     Create beautiful art using deep learning.
     """
 
+    # If the output path is a directory, we append a generated filename
     if os.path.isdir(output_path):
         output_path = os.path.join(
             output_path,
             "{}.png".format(datetime.now().strftime('%Y-%m-%dT%H:%M:%S'))
         )
+
+    # Automatic detection of optimal device
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    # Will fail if we use a non-valid device
+    # RuntimeError if we use a non-valid device
     torch.device(device)
 
     if verbose:
@@ -99,9 +102,10 @@ def main(
         print(f"Epochs={num_epochs}")
         print(f"Trade-off={trade_off}")
 
-    normalization_term = None
+    # FIXME random_init still doesn't work
     random_init = False
 
+    # Load and transform the output images
     content_image, style_image = neurartist.utils.load_input_images(
         content_path,
         style_path,
@@ -109,19 +113,24 @@ def main(
         device
     )
 
+    # Instantiate the model
     model = neurartist.models.NeuralStyle(
         trade_off=trade_off,
-        normalization_term=normalization_term,
         device=device
     )
 
+    # Initialize the optimizer
     if random_init:
+        # despite what's described in the article, initializing the gradient
+        # descent with a random input doesn't produce good results at all
         output = torch.randn(content_image.size()).type_as(content_image.data)
     else:
         output = content_image.clone()
+    # The output image is updated by backward propagation
     output.requires_grad_(True)
     optimizer = torch.optim.LBFGS([output])
 
+    # Fetch the target style and content
     content_targets, style_targets = model.get_images_targets(
         content_image,
         style_image
@@ -133,6 +142,7 @@ def main(
 
     try:
         for i in range(num_epochs):
+            # Run a forward/backward pass
             content_loss, style_loss, overall_loss = model.epoch(
                 output,
                 content_targets,
@@ -148,10 +158,11 @@ def main(
                     style_loss,
                     overall_loss
                 ))
-    except KeyboardInterrupt:
+    except KeyboardInterrupt:  # Handle manual interruption through Ctrl-C
         if verbose:
             print("Manual interruption")
 
+    # Save the output image
     output_image = neurartist.utils.output_transforms(img_size)(
         output.clone().data[0].squeeze()
     )
