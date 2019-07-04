@@ -12,7 +12,7 @@ import neurartist
 
 
 @click.command()
-@click.version_option(version=neurartist.__version__)
+# General
 @click.option(
     "--content", "-c",
     "content_path",
@@ -55,6 +55,20 @@ import neurartist
     type=click.INT,
     help="Trade-off between content (>1) and style (<1) faithfullness"
 )
+# Color control
+@click.option(
+    "--color-control",
+    default="none",
+    type=click.Choice(["histogram_matching", "luminance_only", "none"]),
+    help="Color control method (default: none)"
+)
+@click.option(
+    "--cc-luminance-only-normalize",
+    "luminance_only_normalize",
+    is_flag=True,
+    help="For color control/luminance only method, normalize output luma"
+)
+# Meta
 @click.option(
     "--device", "-d",
     default=None,
@@ -65,6 +79,7 @@ import neurartist
     default=True,
     help="Verbose flag prints info during computation (default: verbose)"
 )
+@click.version_option(version=neurartist.__version__)
 def main(
     content_path,
     style_path,
@@ -73,7 +88,9 @@ def main(
     num_epochs,
     trade_off,
     verbose,
-    device
+    device,
+    color_control,
+    luminance_only_normalize
 ):
     """
     Create beautiful art using deep learning.
@@ -101,6 +118,7 @@ def main(
         print(f"Size={img_size}")
         print(f"Epochs={num_epochs}")
         print(f"Trade-off={trade_off}")
+        print(f"Color control={color_control}")
 
     # FIXME random_init still doesn't work
     random_init = False
@@ -112,6 +130,9 @@ def main(
         img_size,
         device
     )
+
+    if color_control == "histogram_matching":
+        neurartist.utils.color_histogram_matching(content_image, style_image)
 
     # Instantiate the model
     model = neurartist.models.NeuralStyle(
@@ -162,8 +183,19 @@ def main(
         if verbose:
             print("Manual interruption")
 
-    # Save the output image
+    # Convert the output image
     output_image = neurartist.utils.output_transforms(img_size)(
-        output.clone().data[0].squeeze()
+        output.data[0].squeeze()
     )
+
+    # Luminance-only
+    if color_control == "luminance_only":
+        output_image = neurartist.utils.luminance_only(
+            neurartist.utils.output_transforms(img_size)(
+                content_image.data[0].squeeze()
+            ),
+            output_image,
+            luminance_only_normalize
+        )
+
     output_image.save(output_path)
