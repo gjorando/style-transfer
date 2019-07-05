@@ -3,6 +3,7 @@
 A ready-to-use implementation of various Artistic Deep Learning Algorithms.
 
 * *Image Style Transfer Using Convolutional Neural Networks*, Gatys et. al, 2016
+* *Controlling Perceptual Factors in Neural Style Transfer*, Gatys et. al, 2016
 
 # Installation
 
@@ -31,6 +32,27 @@ import neurartist
 ```
 
 To be added.
+
+# Examples
+
+* Basic usage: apply the style of an image to a content image, while preserving the semantic content.
+```
+neurartist -c content.jpg -s style.jpg
+```
+* Color control: apply a style, but preserve the color of the content image.
+```
+# Luminance only
+neurartist -c content.jpg -s style.jpg --color-control luminance_only
+# Luminance only, luma normalized
+neurartist -c content.jpg -s style.jpg --color-control luminance_only --cc-luminance-only-normalize
+# Color histogram matching
+neurartist -c content.jpg -s style.jpg --color-control histogram_matching
+```
+* Style mixin: mix the coarse scale information of style1 (higher layers) with the fine scale information of style2 (lower layers), to create a mixed style to apply to a content image.
+```
+neurartist -c style1.jpg -s style2.jpg -o mixed.png --content-layers [22,29] --style-layers [1,6]
+neurartist -c content.jpg -s mixed.png
+```
 
 # Development
 
