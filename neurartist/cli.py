@@ -52,7 +52,7 @@ import neurartist
     "--trade-off",
     "trade_off",
     default=3,
-    type=click.INT,
+    type=click.FLOAT,
     help="Trade-off between content (>1) and style (<1) faithfullness"
 )
 @click.option(
@@ -95,6 +95,27 @@ import neurartist
     is_flag=True,
     help="For color control/luminance only method, normalize output luma"
 )
+# Efficient high resolution
+@click.option(
+    "--hr-lowres-size",
+    "img_size_lowres",
+    type=click.INT,
+    default=None,
+    help="""
+    If set, intermediate size used for efficient high resolution images (this
+    value should be set for higher (>~600) values of --size/-S)
+    """
+)
+@click.option(
+    "--hr-epochs",
+    "num_epochs_hr",
+    default=None,
+    type=click.INT,
+    help="""
+        Number of epochs for high resolution second pass (if different from
+        --epochs/-e)
+    """
+)
 # Meta
 @click.option(
     "--device", "-d",
@@ -122,6 +143,8 @@ def main(
     style_weights,
     color_control,
     luminance_only_normalize,
+    img_size_lowres,
+    num_epochs_hr,
     device,
     verbose
 ):
@@ -155,7 +178,25 @@ def main(
     # RuntimeError if we use a non-valid device
     torch.device(device)
 
-    # Load and transform the output images
+    # High resolution computation
+    compute_hr = img_size_lowres is not None
+    if compute_hr:
+        assert img_size_lowres < img_size, \
+            "intermediate lowres size should be smaller than final size"
+        if num_epochs_hr is None:
+            num_epochs_hr = num_epochs
+        # img_size_hr will store the final output size, and img_size the
+        # intermediate lowres size
+        img_size_hr, img_size = img_size, img_size_lowres
+        # Load and transform high resolution input images
+        content_image_hr, style_image_hr = neurartist.utils.load_input_images(
+            content_path,
+            style_path,
+            img_size_hr,
+            device
+        )
+
+    # Load and transform the input images
     content_image, style_image = neurartist.utils.load_input_images(
         content_path,
         style_path,
@@ -163,8 +204,22 @@ def main(
         device
     )
 
+    # If color control mode is histogram matching, update style image
     if color_control == "histogram_matching":
         neurartist.utils.color_histogram_matching(content_image, style_image)
+        # Histogram matching on highres style image as well
+        if compute_hr:
+            style_image_pil = neurartist.utils.output_transforms()(
+                style_image.data[0].squeeze()
+            )
+            style_image_hr = neurartist.utils.input_transforms(
+                # We take the exact actual size, because torchvision transform
+                # is not consistent with only one value
+                style_image_hr.shape[2:4],
+                device=device
+            )(
+                style_image_pil,
+            ).unsqueeze(0)
 
     # Instantiate the model
     model = neurartist.models.NeuralStyle(
@@ -198,8 +253,14 @@ def main(
         print(f"Content={content_path}")
         print(f"Style={style_path}")
         print(f"Output={output_path}")
-        print(f"Size={img_size}")
+        if compute_hr:
+            print(f"Highres size={img_size_hr}")
+            print(f"Lowres size={img_size}")
+        else:
+            print(f"Size={img_size}")
         print(f"Epochs={num_epochs}")
+        if compute_hr:
+            print(f"Highres epochs={num_epochs_hr}")
         print(f"Trade-off={trade_off}")
         print(f"Random init={random_init}")
         print(f"Color control={color_control}")
@@ -231,18 +292,89 @@ def main(
             print("Manual interruption")
 
     # Convert the output image
-    output_image = neurartist.utils.output_transforms(img_size)(
+    output_image = neurartist.utils.output_transforms()(
         output.data[0].squeeze()
     )
+
+    # High resolution pass
+    if compute_hr:
+        # Reinstantiate the model and clear some gpu cache
+        if device.startswith("cuda"):
+            # FIXME there is still a lot of memory that is not properly fred
+            del model
+            del output
+            del content_image
+            del style_image
+            torch.cuda.empty_cache()
+            model = neurartist.models.NeuralStyle(
+                content_layers=content_layers,
+                style_layers=style_layers,
+                content_weights=content_weights,
+                style_weights=style_weights,
+                trade_off=trade_off,
+                device=device
+            )
+
+        # Resize the output to final highres size
+        output = neurartist.utils.input_transforms(
+            # We take the exact actual size, because torchvision transform
+            # is not consistent with only one value
+            content_image_hr.shape[2:4],
+            device=device
+        )(
+            output_image
+        ).unsqueeze(0)
+
+        # The highres output image is updated by backward propagation
+        output.requires_grad_(True)
+        optimizer = torch.optim.LBFGS([output])
+
+        # Fetch the highres target style and content
+        content_targets, style_targets = model.get_images_targets(
+            content_image_hr,
+            style_image_hr
+        )
+
+        print()
+        print("High resolution pass")
+        print("Epoch\tContent loss\tStyle loss\tOverall")
+        try:
+            for i in range(num_epochs_hr):
+                # Run a forward/backward pass
+                content_loss, style_loss, overall_loss = model.epoch(
+                    output,
+                    content_targets,
+                    style_targets,
+                    optimizer
+                )
+
+                if verbose:
+                    print("{}/{}\t{:.2f}\t{:.2f}\t{:.2f}".format(
+                        str(i+1).zfill(len(str(num_epochs_hr))),
+                        num_epochs_hr,
+                        content_loss,
+                        style_loss,
+                        overall_loss
+                    ))
+        except KeyboardInterrupt:  # Handle manual interruption through Ctrl-C
+            if verbose:
+                print("Manual interruption")
+
+        # Convert the highres output image
+        output_image = neurartist.utils.output_transforms()(
+            output.data[0].squeeze()
+        )
 
     # Luminance-only
     if color_control == "luminance_only":
         output_image = neurartist.utils.luminance_only(
-            neurartist.utils.output_transforms(img_size)(
+            neurartist.utils.output_transforms()(
+                content_image_hr.data[0].squeeze() if compute_hr else
                 content_image.data[0].squeeze()
             ),
             output_image,
             luminance_only_normalize
         )
 
+    # Finally save the output
     output_image.save(output_path)
