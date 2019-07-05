@@ -55,6 +55,33 @@ import neurartist
     type=click.INT,
     help="Trade-off between content (>1) and style (<1) faithfullness"
 )
+@click.option(
+    "--init-random/--init-content",
+    "random_init",
+    default=False,
+    help="Init optimizer either from random noise or content image (default)"
+)
+# Layers options
+@click.option(
+    "--content-layers",
+    default=None,
+    help="Indexes of content layers (as a string representing a list)"
+)
+@click.option(
+    "--style-layers",
+    default=None,
+    help="Indexes of style layers (as a string representing a list)"
+)
+@click.option(
+    "--content-weights",
+    default=None,
+    help="Content weights (as a string representing a list)"
+)
+@click.option(
+    "--style-weights",
+    default=None,
+    help="Style weights (as a string representing a list)"
+)
 # Color control
 @click.option(
     "--color-control",
@@ -76,6 +103,7 @@ import neurartist
 )
 @click.option(
     "--verbose/--quiet",
+    "verbose",
     default=True,
     help="Verbose flag prints info during computation (default: verbose)"
 )
@@ -87,10 +115,15 @@ def main(
     img_size,
     num_epochs,
     trade_off,
-    verbose,
-    device,
+    random_init,
+    content_layers,
+    style_layers,
+    content_weights,
+    style_weights,
     color_control,
-    luminance_only_normalize
+    luminance_only_normalize,
+    device,
+    verbose
 ):
     """
     Create beautiful art using deep learning.
@@ -103,25 +136,24 @@ def main(
             "{}.png".format(datetime.now().strftime('%Y-%m-%dT%H:%M:%S'))
         )
 
+    # Load argument lists
+    content_layers = neurartist.utils.validate_list_parameter(content_layers)
+    content_weights = neurartist.utils.validate_list_parameter(
+        content_weights,
+        float
+    )
+    style_layers = neurartist.utils.validate_list_parameter(style_layers)
+    style_weights = neurartist.utils.validate_list_parameter(
+        style_weights,
+        float
+    )
+
     # Automatic detection of optimal device
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # RuntimeError if we use a non-valid device
     torch.device(device)
-
-    if verbose:
-        print(f"Device={device}")
-        print(f"Content={content_path}")
-        print(f"Style={style_path}")
-        print(f"Output={output_path}")
-        print(f"Size={img_size}")
-        print(f"Epochs={num_epochs}")
-        print(f"Trade-off={trade_off}")
-        print(f"Color control={color_control}")
-
-    # FIXME random_init still doesn't work
-    random_init = False
 
     # Load and transform the output images
     content_image, style_image = neurartist.utils.load_input_images(
@@ -136,6 +168,10 @@ def main(
 
     # Instantiate the model
     model = neurartist.models.NeuralStyle(
+        content_layers=content_layers,
+        style_layers=style_layers,
+        content_weights=content_weights,
+        style_weights=style_weights,
         trade_off=trade_off,
         device=device
     )
@@ -158,6 +194,17 @@ def main(
     )
 
     if verbose:
+        print(f"Device={device}")
+        print(f"Content={content_path}")
+        print(f"Style={style_path}")
+        print(f"Output={output_path}")
+        print(f"Size={img_size}")
+        print(f"Epochs={num_epochs}")
+        print(f"Trade-off={trade_off}")
+        print(f"Random init={random_init}")
+        print(f"Color control={color_control}")
+        print(f"Model={model}")
+        print()
         print("Ctrl-C to prematurely end computations")
         print("Epoch\tContent loss\tStyle loss\tOverall")
 

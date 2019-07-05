@@ -44,34 +44,32 @@ class NeuralStyle(torch.nn.Module):
         """
 
         super().__init__()
+        self.content_layers = None
+        self.content_weights = None
+        self.style_layers = None
+        self.style_weights = None
 
         if features is None:
             # The default features are the one described in the article
             self.features = torchvision.models.vgg19(pretrained=True).features
 
             # The next lines set default values for layer indexes and weights
-
             if content_layers is None:
                 # ReLU of conv4_2
                 self.content_layers = [22]
+                if content_weights is None:
+                    self.content_weights = [1e0]
             if style_layers is None:
                 # ReLU of conv1_1, conv2_1, conv3_1, conv4_1, conv5_1
                 self.style_layers = [1, 6, 11, 20, 29]
-            if content_weights is None:
-                self.content_weights = [1e0]
-            if style_weights is None:
-                # style weights found in another article (they work well)
-                self.style_weights = [
-                    1e3/n**2
-                    for n in [64, 128, 256, 512, 512]
-                ]
-                # the weights are normalized
-                self.style_weights = [
-                    w/sum(self.style_weights)
-                    for w in self.style_weights
-                ]
+                if style_weights is None:
+                    # style weights found in another article (they work well)
+                    self.style_weights = [
+                        1e3/n**2
+                        for n in [64, 128, 256, 512, 512]
+                    ]
         else:
-            # If we use another set of features, we have no default values
+            # If we use another set of features, we have no default layers
             self.features = features
             if content_layers is None:
                 raise ValueError("""
@@ -81,24 +79,46 @@ class NeuralStyle(torch.nn.Module):
                 raise ValueError("""
                 model is not None; style_layers should be defined
                 """)
-            if content_weights is None:
-                raise ValueError("""
-                model is not None; content_weights should be defined
-                """)
-            if style_weights is None:
-                raise ValueError("""
-                model is not None; style_weights should be defined
-                """)
 
         # Define layer indexes and weights
         if content_layers is not None:
+            for layer in content_layers:  # check that each layer is valid
+                assert layer in range(len(self.features)), \
+                    "{} is not in features".format(layer)
             self.content_layers = content_layers
         if style_layers is not None:
+            for layer in style_layers:  # check that each layer is valid
+                assert layer in range(len(self.features)), \
+                    "{} is not in features".format(layer)
             self.style_layers = style_layers
         if content_weights is not None:
+            # Check that the number of weights matches the number of layers
+            assert len(self.content_layers) == len(content_weights), \
+                "content_weights size mismatch"
             self.content_weights = content_weights
+        elif self.content_weights is None:
+            # Default value: same weight for every layer
+            self.content_weights = \
+                [1/len(self.content_layers)]*len(self.content_layers)
         if style_weights is not None:
+            # Check that the number of weights matches the number of layers
+            assert len(self.style_layers) == len(style_weights), \
+                "style_weights size mismatch"
             self.style_weights = style_weights
+        elif self.style_weights is None:
+            # Default value: same weight for every layer
+            self.style_weights = \
+                [1/len(self.style_layers)]*len(self.style_layers)
+
+        # the weights are normalized
+        self.content_weights = [
+            w/sum(self.content_weights)
+            for w in self.content_weights
+        ]
+        self.style_weights = [
+            w/sum(self.style_weights)
+            for w in self.style_weights
+        ]
 
         # Trade-off between content and style loss
         normalization_term = (trade_off+1)
