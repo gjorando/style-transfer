@@ -53,6 +53,11 @@ neurartist -c content.jpg -s style.jpg --color-control histogram_matching
 neurartist -c style1.jpg -s style2.jpg -o mixed.png --content-layers [22,29] --style-layers [1,6]
 neurartist -c content.jpg -s mixed.png
 ```
+* Efficient high resolution: first pass is a low resolution style transfer that efficiently catches coarse scale style features, second pass is a high resolution style transfer that upscales the result of the first pass and fills the lost fine information using fine scale style features.
+```
+neurartist -c content.jpg -s style.jpg -o lowres.png -S 500
+neurartist -c content.jpg -s style.jpg -o highres.png -S 1000 --init-image-path lowres.png
+```
 
 # Development
 

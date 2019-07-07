@@ -8,6 +8,7 @@ import os
 from datetime import datetime
 import torch
 import click
+from PIL import Image
 import neurartist
 
 
@@ -56,10 +57,17 @@ import neurartist
     help="Trade-off between content (>1) and style (<1) faithfullness"
 )
 @click.option(
-    "--init-random/--init-content",
+    "--init-random/--init-image",
     "random_init",
     default=False,
-    help="Init optimizer either from random noise or content image (default)"
+    help="Init optimizer either from random noise, or image (default)"
+)
+@click.option(
+    "--init-image-path",
+    "random_init_path",
+    default=None,
+    type=click.Path(exists=True, dir_okay=False),
+    help="If --init-image is set, path to an image (default: content image)"
 )
 # Layers options
 @click.option(
@@ -146,6 +154,7 @@ def main(
     num_epochs,
     trade_off,
     random_init,
+    random_init_path,
     content_layers,
     style_layers,
     content_weights,
@@ -248,8 +257,14 @@ def main(
         # despite what's described in the article, initializing the gradient
         # descent with a random input doesn't produce good results at all
         output = torch.randn(content_image.size()).type_as(content_image.data)
-    else:
+    elif random_init_path is None:
         output = content_image.clone()
+    else:
+        output = neurartist.utils.input_transforms(
+            img_size,
+            device=device
+        )(Image.open(random_init_path)).unsqueeze(0)
+
     # The output image is updated by backward propagation
     output.requires_grad_(True)
     optimizer = torch.optim.LBFGS([output])
