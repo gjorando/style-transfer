@@ -82,7 +82,7 @@ Or build and install the wheel file with the `--editable` flag.
 # TODO
 
 * Be more consistent with batchsize/no batchsize, especially in covariance_matrix(), add squeeze/unsqueeze steps in transforms
-* Option to perform the hr pass on another device
+* Option to initialize the optimizer with another image (and depreciate --hr options, because with this one we can do the lowres and highres passes with two separate console calls)
 * Documentation.
 * Implement the remaining parts of the jupyter notebook.
 * [Semantic segmentation as described in this article as to limit spillovers](https://arxiv.org/pdf/1703.07511.pdf): different approach than guided gram matrices, but same idea of using spatial guidance channels that describe a semantic segmentation of our images.

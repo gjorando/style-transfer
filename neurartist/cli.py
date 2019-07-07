@@ -116,6 +116,15 @@ import neurartist
         --epochs/-e)
     """
 )
+@click.option(
+    "--hr-device",
+    "device_hr",
+    default=None,
+    help="""
+    PyTorch device to use for high resolution second pass (if different from
+    --device/-d)
+    """
+)
 # Meta
 @click.option(
     "--device", "-d",
@@ -145,6 +154,7 @@ def main(
     luminance_only_normalize,
     img_size_lowres,
     num_epochs_hr,
+    device_hr,
     device,
     verbose
 ):
@@ -185,6 +195,8 @@ def main(
             "intermediate lowres size should be smaller than final size"
         if num_epochs_hr is None:
             num_epochs_hr = num_epochs
+        if device_hr is None:
+            device_hr = device
         # img_size_hr will store the final output size, and img_size the
         # intermediate lowres size
         img_size_hr, img_size = img_size, img_size_lowres
@@ -193,7 +205,7 @@ def main(
             content_path,
             style_path,
             img_size_hr,
-            device
+            device_hr
         )
 
     # Load and transform the input images
@@ -312,7 +324,7 @@ def main(
                 content_weights=content_weights,
                 style_weights=style_weights,
                 trade_off=trade_off,
-                device=device
+                device=device_hr
             )
 
         # Resize the output to final highres size
@@ -320,7 +332,7 @@ def main(
             # We take the exact actual size, because torchvision transform
             # is not consistent with only one value
             content_image_hr.shape[2:4],
-            device=device
+            device=device_hr
         )(
             output_image
         ).unsqueeze(0)
