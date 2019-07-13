@@ -197,7 +197,7 @@ def main(
         output = neurartist.utils.input_transforms(
             img_size,
             device=device
-        )(Image.open(random_init_path)).unsqueeze(0)
+        )(Image.open(random_init_path))
 
     # The output image is updated by backward propagation
     output.requires_grad_(True)
@@ -248,14 +248,14 @@ def main(
 
     # Convert the output image
     output_image = neurartist.utils.output_transforms()(
-        output.data[0].squeeze()
+        output
     )
 
     # Luminance-only
     if color_control == "luminance_only":
         output_image = neurartist.utils.luminance_only(
             neurartist.utils.output_transforms()(
-                content_image.data[0].squeeze()
+                content_image
             ),
             output_image,
             luminance_only_normalize

@@ -48,12 +48,14 @@ def input_transforms(
         torchvision.transforms.Resize(width),
         # Convert Pillow image to torch tensor
         torchvision.transforms.ToTensor(),
-        # transfer tensor to the appropriate device
+        # Transfer tensor to the appropriate device
         torchvision.transforms.Lambda(lambda x: x.to(device)),
-        # normalize according to the model mean and standard deviation
+        # Normalize according to the model mean and standard deviation
         torchvision.transforms.Normalize(model_mean, model_std),
-        # convert [0, 1] values to [0, max_value] values
-        torchvision.transforms.Lambda(lambda x: x.mul_(max_value))
+        # Convert [0, 1] values to [0, max_value] values
+        torchvision.transforms.Lambda(lambda x: x.mul_(max_value)),
+        # Add batch dimension
+        torchvision.transforms.Lambda(lambda x: x.unsqueeze(0))
     ])
 
 
@@ -68,7 +70,9 @@ def output_transforms(
     """
 
     return torchvision.transforms.Compose([
-        # convert [0, max_value] values back to [0, 1] values
+        # Remove batch dimension
+        torchvision.transforms.Lambda(lambda x: x.data[0].squeeze()),
+        # Convert [0, max_value] values back to [0, 1] values
         torchvision.transforms.Lambda(lambda x: x.mul_(1/max_value)),
         # Denormalize the tensor
         torchvision.transforms.Normalize(
@@ -110,14 +114,15 @@ def covariance_matrix(array):
     """
     n_batchs, n_dims, height, width = array.size()
 
-    array_reshaped = array.view(n_dims, -1)
+    array_reshaped = array.view(n_batchs, n_dims, -1)
 
-    array_centered = array_reshaped - torch.mean(array_reshaped, 1, True)
-    K = torch.mm(array_centered, array_centered.t())
+    array_centered = array_reshaped - torch.mean(array_reshaped, 2, True)
+    K = torch.matmul(array_centered, array_centered.transpose(1, 2))
 
     return K.div((height*width)-1)
 
 
+@_pm.export
 def tensor_pow(m, p):
     """
         Raise a 2 dimensional (matrix like) torch tensor to the power of p
@@ -143,7 +148,7 @@ def load_input_images(content_path, style_path, img_size, device="cpu"):
 
     images = (Image.open(content_path), Image.open(style_path))
     transformed_images = [
-        input_transforms(img_size, device=device)(i).unsqueeze(0)
+        input_transforms(img_size, device=device)(i)
         for i in images
     ]
     return transformed_images
@@ -191,8 +196,8 @@ def color_histogram_matching(content_image, style_image):
     style_image is modified inplace.
     """
 
-    style_cov = covariance_matrix(style_image)
-    content_cov = covariance_matrix(content_image)
+    style_cov = covariance_matrix(style_image).squeeze()
+    content_cov = covariance_matrix(content_image).squeeze()
     style_means = torch.mean(
         style_image.reshape(style_image.shape[1], -1),
         1,
