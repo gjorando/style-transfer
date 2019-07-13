@@ -25,6 +25,8 @@ NB for GPU users: pip ships `torch`/`torchvision` with the Cuda Toolkit 9.0. If 
 neurartist --help
 ```
 
+See the examples below for the most common use cases.
+
 ## Library
 
 ```

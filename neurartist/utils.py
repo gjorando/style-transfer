@@ -16,8 +16,12 @@ from PIL import ImageStat
 def validate_list_parameter(param_value, value_type=int):
     """
     Validate a command line parameter being a literal json list (as a string).
-    It returns the parsed value.
+
+    :param param_value: Raw input string.
+    :param value_type: Target type of each element of the list.
+    :return: Parsed list.
     """
+
     if param_value is None:
         result = None
     else:
@@ -39,8 +43,18 @@ def input_transforms(
 ):
     """
     Transforms on input images. Default model mean and standard deviations are
-    the ones from the ImageNet dataset, which was used to train VGG19. Default
-    max_value is 255, as VGG19 expects RGB [0, 255] images.
+    the ones from the ImageNet dataset, which was used to train VGG19.
+
+    :param width: Target width of the transformed input.
+    :param model_mean: Mean of the trained model for normalization (default:
+    ImageNet mean).
+    :param model_mean: Standard deviation of the trained model for
+    normalization (default: ImageNet std).
+    :param max_value: Multiplier of the image (default: 255, as VGG19 excepts
+    [0,255] images).
+    :param device: Device onto which transfer the image.
+    :return: A callable which transforms a PIL image into a (1, n_dims, height,
+    width) PyTorch tensor.
     """
 
     return torchvision.transforms.Compose([
@@ -67,6 +81,15 @@ def output_transforms(
 ):
     """
     Transforms on output image.
+
+    :param model_mean: Mean of the trained model for denormalization (default:
+    ImageNet mean).
+    :param model_mean: Standard deviation of the trained model for
+    denormalization (default: ImageNet std).
+    :param max_value: Same value as max_value that was used for input_tranforms
+    (it will bring the image back to [0, 1] values).
+    :return: A callable which transforms a (1, n_dims, height, width) PyTorch
+    tensor into a PIL image.
     """
 
     return torchvision.transforms.Compose([
@@ -94,8 +117,11 @@ def output_transforms(
 @_pm.export
 def gram_matrix(array):
     """
-    Compute the Gramians for each dimension of each image in a (n_batchs,
-    n_dims, height, width) tensor.
+    Compute the Gramians for each dimension of each image in a tensor.
+
+    :param array: A (n_batchs, n_dims, height, width) PyTorch tensor.
+    :return: Gramians matrices for each dimension of each image, as a
+    (n_batchs, n_dims, n_dims) PyTorch tensor.
     """
 
     n_batchs, n_dims, height, width = array.size()
@@ -110,14 +136,19 @@ def gram_matrix(array):
 def covariance_matrix(array):
     """
     Compute the unbiased covariance matrices for each channel of an image in a
-    (1, n_dims, height, width) tensor.
+    tensor.
+
+    :param array: A (n_batchs, n_dims, height, width) PyTorch tensor.
+    :return: Unbiased covariance matrices for each dimension of each image, as
+    a (n_batches, n_dims, n_dims) PyTorch tensor.
     """
+
     n_batchs, n_dims, height, width = array.size()
 
     array_reshaped = array.view(n_batchs, n_dims, -1)
 
     array_centered = array_reshaped - torch.mean(array_reshaped, 2, True)
-    K = torch.matmul(array_centered, array_centered.transpose(1, 2))
+    K = torch.bmm(array_centered, array_centered.transpose(1, 2))
 
     return K.div((height*width)-1)
 
@@ -144,6 +175,12 @@ def tensor_pow(m, p):
 def load_input_images(content_path, style_path, img_size, device="cpu"):
     """
     Load and transform input images.
+
+    :param content_path: Path of the content image.
+    :param style_path: Path of the style image.
+    :param img_size: Target width of the transformed images.
+    :param device: Device onto which transfer the images.
+    :return: transformed content and style images.
     """
 
     images = (Image.open(content_path), Image.open(style_path))
@@ -157,8 +194,13 @@ def load_input_images(content_path, style_path, img_size, device="cpu"):
 @_pm.export
 def luminance_only(content_image, output, normalize_luma=False):
     """
-    Replace the luma of output with the luma of content_image. The result is
-    returned as a copy.
+    Keep the luma of the output, and use the color of the content image.
+
+    :param content_image: Content image.
+    :param output: Output image.
+    :param normalize_luma: If True, the luma channel is renormalized.
+    :return: A new image with the luma of the output and the color of the
+    content image.
     """
 
     # luma of the output image
@@ -194,6 +236,9 @@ def color_histogram_matching(content_image, style_image):
     """
     Match the histogram of style_image with the one of content_image.
     style_image is modified inplace.
+
+    :param content_image: Content image.
+    :param style_image: Style image.
     """
 
     style_cov = covariance_matrix(style_image).squeeze()
