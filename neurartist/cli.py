@@ -103,6 +103,21 @@ import neurartist
     is_flag=True,
     help="For color control/luminance only method, normalize output luma"
 )
+# Spatial control
+@click.option(
+    "--content-guidance",
+    "content_guidance_path",
+    default=None,
+    type=click.Path(exists=True, dir_okay=True, file_okay=False),
+    help="Content guidance channels folder path"
+)
+@click.option(
+    "--style-guidance",
+    "style_guidance_path",
+    default=None,
+    type=click.Path(exists=True, dir_okay=True, file_okay=False),
+    help="Style guidance channels folder path"
+)
 # Meta
 @click.option(
     "--device", "-d",
@@ -131,12 +146,23 @@ def main(
     style_weights,
     color_control,
     luminance_only_normalize,
+    content_guidance_path,
+    style_guidance_path,
     device,
     verbose
 ):
     """
     Create beautiful art using deep learning.
     """
+
+    # Check that content_guidance_path and style_guidance_path are either both
+    # None or both set
+    guidance_check = int(content_guidance_path is None)
+    guidance_check += int(style_guidance_path is None)
+    if guidance_check not in (0, 2):
+        raise ValueError(
+            "content_guidance and style_guidance must be both set or both None"
+        )
 
     # If the output path is a directory, we append a generated filename
     if os.path.isdir(output_path):
@@ -186,6 +212,26 @@ def main(
         device=device
     )
 
+    # Load guidance channels if desired
+    if content_guidance_path is None:
+        content_guidance = None
+        style_guidance = None
+    else:
+        content_guidance = neurartist.utils.load_guidance_channels(
+            content_guidance_path,
+            img_size,
+            model,
+            "simple",  # FIXME parametrize
+            device
+        )
+        style_guidance = neurartist.utils.load_guidance_channels(
+            style_guidance_path,
+            img_size,
+            model,
+            "simple",  # FIXME parametrize
+            device
+        )
+
     # Initialize the optimizer
     if random_init:
         # despite what's described in the article, initializing the gradient
@@ -206,7 +252,8 @@ def main(
     # Fetch the target style and content
     content_targets, style_targets = model.get_images_targets(
         content_image,
-        style_image
+        style_image,
+        style_guidance
     )
 
     if verbose:
@@ -219,6 +266,7 @@ def main(
         print(f"Trade-off={trade_off}")
         print(f"Random init={random_init}")
         print(f"Color control={color_control}")
+        print(f"Guidance={content_guidance_path is not None}")
         print(f"Model={model}")
         print()
         print("Ctrl-C to prematurely end computations")
@@ -231,7 +279,8 @@ def main(
                 output,
                 content_targets,
                 style_targets,
-                optimizer
+                optimizer,
+                content_guidance
             )
 
             if verbose:

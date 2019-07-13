@@ -4,6 +4,7 @@
 @author: gjorando
 """
 
+import os
 import json
 import torch
 import torchvision
@@ -128,6 +129,31 @@ def gram_matrix(array):
 
     array_flattened = array.view(n_batchs, n_dims, -1)
     G = torch.bmm(array_flattened, array_flattened.transpose(1, 2))
+
+    return G.div(height*width)
+
+
+@_pm.export
+def guided_gram_matrix(array, guidance):
+    """
+    Compute the Guided Gramians for each dimension of each image in a tensor.
+
+    :param array: A (n_batchs, n_dims, height, width) PyTorch tensor.
+    :param guidance: A (n_guidance, n_batchs, 1, height, width) PyTorch tensor.
+    :return: Guided Gramians matrices for each dimension of each image, as a
+    (n_batchs, n_dims, n_dims) PyTorch tensor.
+    """
+
+    n_batchs, n_dims, height, width = array.size()
+    n_guidance = guidance.size()[0]
+
+    array_flattened = array.view(n_batchs, n_dims, -1)
+    guidance_flattened = guidance.view(n_guidance, n_batchs, 1, -1)
+
+    G = torch.zeros(n_guidance, n_dims, n_dims, device=array.device)
+    for c in range(n_guidance):
+        array_guided = torch.mul(guidance_flattened[c], array_flattened)
+        G[c] = torch.bmm(array_guided, array_guided.transpose(1, 2))
 
     return G.div(height*width)
 
@@ -268,3 +294,70 @@ def color_histogram_matching(content_image, style_image):
                     style_image.squeeze()[:, i, j].unsqueeze(1)
                 ) + chm_b
             ).squeeze()
+
+
+@_pm.export
+def load_guidance_channels(
+    guidance_path,
+    img_size,
+    model,
+    method="simple",
+    device="cpu"
+):
+    """
+    Load guidance channels from a folder, containing one image
+    file per guidance channel.
+
+    :param guidance_path: Path of the folder in which guidance images are
+    stored.
+    :param img_size: Target width of the transformed images.
+    :param model: Style transfer model, needed to broadcast guidance dimensions
+    for each style layer.
+    :param method: Propagation method.
+    :param device: Device onto which transfer the images.
+    :return: Loaded channels.
+    """
+
+    assert method in ("simple"), f"{method} is not a valid method"
+
+    guidance_images = [
+        Image.open(
+            os.path.join(guidance_path, file)
+        ).convert("L").convert("RGB")  # Broadcast gray images to RGB channels
+        for file in sorted(os.listdir(guidance_path))
+    ]
+
+    guidance_channels = [
+        input_transforms(
+            img_size,
+            [0]*3,
+            [1]*3,
+            1,
+            device
+        )(img)
+        for img in guidance_images
+    ]
+
+    layer_sizes = [f.shape[2:4] for f in model(guidance_channels[0])[1]]
+
+    guidance_images = [img.convert("L") for img in guidance_images]
+    guidance_channels = []
+
+    for layer_size in layer_sizes:
+        if method == "simple":
+            guidance_channels.append(torch.stack([
+                input_transforms(
+                    layer_size,
+                    [0],
+                    [1],
+                    1,
+                    device
+                )(img)
+                for img in guidance_images
+            ]))
+        elif method == "all":
+            raise NotImplementedError("Not implemented")
+        elif method == "inside":
+            raise NotImplementedError("Not implemented")
+
+    return guidance_channels

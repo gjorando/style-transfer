@@ -60,6 +60,10 @@ neurartist -c content.jpg -s mixed.png
 neurartist -c content.jpg -s style.jpg -o lowres.png -S 500
 neurartist -c content.jpg -s style.jpg -o highres.png -S 1000 --init-image-path lowres.png
 ```
+* Spatial control: Guided gram matrices with guidance channels.
+```
+neurartist -c content.jpg -s style.jpg --content-guidance content_image_guidance_path/ --style-guidance style_image_guidance_path/
+```
 
 # Development
 

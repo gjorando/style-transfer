@@ -172,7 +172,8 @@ class NeuralStyle(torch.nn.Module):
         target,
         content_targets,
         style_targets,
-        optimizer
+        optimizer,
+        guidance=None
     ):
         """
         Run a single epoch for the model: forward pass, loss computation and
@@ -187,12 +188,13 @@ class NeuralStyle(torch.nn.Module):
         curr_content_loss = losses.content(
             self.content_weights,
             content_targets,
-            content_output,
+            content_output
         )
         curr_style_loss = losses.style(
             self.style_weights,
             style_targets,
             style_output,
+            guidance
         )
         loss = self.alpha*curr_content_loss + self.beta*curr_style_loss
 
@@ -203,7 +205,7 @@ class NeuralStyle(torch.nn.Module):
 
         return float(curr_content_loss), float(curr_style_loss), float(loss)
 
-    def get_images_targets(self, content_image, style_image):
+    def get_images_targets(self, content_image, style_image, guidance=None):
         """
         Return the content layers of the content image and the style layers of
         the style image.
@@ -212,9 +214,15 @@ class NeuralStyle(torch.nn.Module):
         content_targets = [
             f.detach() for f in self(content_image)[0]
         ]
-        style_targets = [
-            utils.gram_matrix(f).detach() for f in self(style_image)[1]
-        ]
+        if guidance is None:
+            style_targets = [
+                utils.gram_matrix(f).detach() for f in self(style_image)[1]
+            ]
+        else:
+            style_targets = [
+                utils.guided_gram_matrix(f, g).detach()
+                for f, g in zip(self(style_image)[1], guidance)
+            ]
 
         return content_targets, style_targets
 

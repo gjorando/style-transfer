@@ -31,21 +31,33 @@ def content(weights, truth, pred):
 
 
 @_pm.export
-def style(weights, truth, pred):
+def style(weights, truth, pred, guidance=None):
     """
     Compute the standard neural style style loss.
 
     :param weights: Array of weights for each layer.
     :param truth: Gram matrices of each style layer of the style image.
     :param pred: Style layers from the neural network on the output.
+    :param guidance: Content guidance channels. If set, guided gram matrixes
+    are computed instead, and truth should store the guided gram matrices.
     :return: The style loss being the weighted sum of MSE between the gramian
     of the target and the gramian of the output.
     """
 
     # Weighted sum of mse between the gram matrices of the output and target
     # layers
-    return content(
-        weights,
-        truth,
-        [utils.gram_matrix(layer) for layer in pred]
-    )
+    if guidance is None:
+        return content(
+            weights,
+            truth,
+            [utils.gram_matrix(layer) for layer in pred]
+        )
+    else:
+        return content(
+            weights,
+            truth,
+            [
+                utils.guided_gram_matrix(layer, channel)
+                for layer, channel in zip(pred, guidance)
+            ]
+        )
