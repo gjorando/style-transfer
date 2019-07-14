@@ -60,9 +60,9 @@ neurartist -c content.jpg -s mixed.png
 neurartist -c content.jpg -s style.jpg -o lowres.png -S 500
 neurartist -c content.jpg -s style.jpg -o highres.png -S 1000 --init-image-path lowres.png
 ```
-* Spatial control: Guided gram matrices with guidance channels.
+* Spatial control: Guided gram matrices with guidance channels. Guidance paths should contain black and white guidance images (with the same size ratio as content and style images), defining the boundaries of semantic regions of each image. Style guidance images and content guidance images should have the same name, in correspondance to a semantic region. Segmentation of the image should be exhaustive.
 ```
-neurartist -c content.jpg -s style.jpg --content-guidance content_image_guidance_path/ --style-guidance style_image_guidance_path/
+neurartist -c content.jpg -s style.jpg --content-guidance content_image_guidance_path/ --style-guidance style_image_guidance_path/ --guidance-propagation-method inside
 ```
 
 # Development
@@ -93,6 +93,8 @@ Or build and install the wheel file with the `--editable` flag.
 # TODO
 
 * Documentation.
-* Implement the remaining parts of the jupyter notebook.
+* Implement guided sums.
+* Examine if we need to add a fallback global guidance channel for pixels that aren't covered by any channel (briefly mentioned in the article but very vague).
+* For guidance channels propagation: investigate what they mean by "erosion" (see supplementary material document linked in the original article). (Short answer: yes, it is needed, with bigger kernel sizes the style transfer isn't performed at the boundary.)
 * [Semantic segmentation as described in this article as to limit spillovers](https://arxiv.org/pdf/1703.07511.pdf): different approach than guided gram matrices, but same idea of using spatial guidance channels that describe a semantic segmentation of our images.
 * More deep-artistic algorithms.

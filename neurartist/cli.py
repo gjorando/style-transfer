@@ -12,6 +12,13 @@ from PIL import Image
 import neurartist
 
 
+def odd_int(value):
+    value = int(value)
+    if value % 2 == 0:
+        raise ValueError("Odd number required")
+    return value
+
+
 @click.command()
 # General
 @click.option(
@@ -118,6 +125,26 @@ import neurartist
     type=click.Path(exists=True, dir_okay=True, file_okay=False),
     help="Style guidance channels folder path"
 )
+@click.option(
+    "--guidance-propagation-method",
+    default="simple",
+    type=click.Choice(["simple", "inside", "all"]),
+    help="Propagation method for guidance channels"
+)
+@click.option(
+    "--guidance-propagation-kernel-size",
+    default=None,
+    type=odd_int,
+    help="Kernel size for propagation of guidance channels (relevant for "
+         "inside and all methods)"
+)
+@click.option(
+    "--guidance-propagation-dilation",
+    default=None,
+    type=click.INT,
+    help="Dilation for propagation of guidance channels (relevant for "
+         "inside and all methods)"
+)
 # Meta
 @click.option(
     "--device", "-d",
@@ -148,6 +175,9 @@ def main(
     luminance_only_normalize,
     content_guidance_path,
     style_guidance_path,
+    guidance_propagation_method,
+    guidance_propagation_kernel_size,
+    guidance_propagation_dilation,
     device,
     verbose
 ):
@@ -217,19 +247,29 @@ def main(
         content_guidance = None
         style_guidance = None
     else:
+        kernel_params = {}
+        if guidance_propagation_kernel_size is not None:
+            kernel_params["kernel_size"] = \
+                (guidance_propagation_kernel_size,)*2
+        if guidance_propagation_dilation is not None:
+            kernel_params["dilation"] = \
+                (guidance_propagation_dilation,)*2
+
         content_guidance = neurartist.utils.load_guidance_channels(
             content_guidance_path,
             img_size,
             model,
-            "simple",  # FIXME parametrize
-            device
+            method=guidance_propagation_method,
+            kernel_parameters=kernel_params,
+            device=device
         )
         style_guidance = neurartist.utils.load_guidance_channels(
             style_guidance_path,
             img_size,
             model,
-            "simple",  # FIXME parametrize
-            device
+            method=guidance_propagation_method,
+            kernel_parameters=kernel_params,
+            device=device
         )
 
     # Initialize the optimizer
@@ -267,6 +307,8 @@ def main(
         print(f"Random init={random_init}")
         print(f"Color control={color_control}")
         print(f"Guidance={content_guidance_path is not None}")
+        if content_guidance_path is not None:
+            print(f"Guidance propagation method={guidance_propagation_method}")
         print(f"Model={model}")
         print()
         print("Ctrl-C to prematurely end computations")

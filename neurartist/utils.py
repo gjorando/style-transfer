@@ -6,6 +6,7 @@
 
 import os
 import json
+import functools
 import torch
 import torchvision
 from neurartist import _package_manager as _pm
@@ -139,21 +140,21 @@ def guided_gram_matrix(array, guidance):
     Compute the Guided Gramians for each dimension of each image in a tensor.
 
     :param array: A (n_batchs, n_dims, height, width) PyTorch tensor.
-    :param guidance: A (n_guidance, n_batchs, 1, height, width) PyTorch tensor.
+    :param guidance: A (n_batchs, n_guidance, height, width) PyTorch tensor.
     :return: Guided Gramians matrices for each dimension of each image, as a
-    (n_batchs, n_dims, n_dims) PyTorch tensor.
+    (n_batchs, n_guidance, n_dims, n_dims) PyTorch tensor.
     """
 
     n_batchs, n_dims, height, width = array.size()
-    n_guidance = guidance.size()[0]
+    n_guidance = guidance.size()[1]
 
     array_flattened = array.view(n_batchs, n_dims, -1)
-    guidance_flattened = guidance.view(n_guidance, n_batchs, 1, -1)
+    guidance_flattened = guidance.view(n_batchs, n_guidance, 1, -1)
 
-    G = torch.zeros(n_guidance, n_dims, n_dims, device=array.device)
+    G = torch.zeros(n_batchs, n_guidance, n_dims, n_dims, device=array.device)
     for c in range(n_guidance):
-        array_guided = torch.mul(guidance_flattened[c], array_flattened)
-        G[c] = torch.bmm(array_guided, array_guided.transpose(1, 2))
+        array_guided = torch.mul(guidance_flattened[:, c], array_flattened)
+        G[:, c] = torch.bmm(array_guided, array_guided.transpose(1, 2))
 
     return G.div(height*width)
 
@@ -302,6 +303,8 @@ def load_guidance_channels(
     img_size,
     model,
     method="simple",
+    threshold=.5,
+    kernel_parameters=None,
     device="cpu"
 ):
     """
@@ -314,11 +317,29 @@ def load_guidance_channels(
     :param model: Style transfer model, needed to broadcast guidance dimensions
     for each style layer.
     :param method: Propagation method.
+    :param threshold: Thresholding value (if None, no thresholding is done and
+    guidance layers may have non fully black or white values).
+    :param kernel_parameters: Optional parameters to fix the kernel attributes
+    of detection method, instead of using kernel attributes from the model.
+    This is only relevant for "inside" and "all" methods, and should have the
+    following keys: "kernel_size" and "dilation". Each parameter is a 2-tuple.
     :param device: Device onto which transfer the images.
     :return: Loaded channels.
     """
 
-    assert method in ("simple"), f"{method} is not a valid method"
+    assert method in ("simple", "inside", "all"), \
+        f"{method} is not a valid method"
+    if kernel_parameters is not None and len(kernel_parameters) > 0:
+        kernel_parameters = kernel_parameters.copy()
+        assert set(kernel_parameters.keys()).issubset({
+            "kernel_size",
+            "dilation"
+        }), "Invalid key in kernel_parameters"
+        kernel_parameters["padding"] = tuple(
+            int((i-1)/2) for i in kernel_parameters["kernel_size"]
+        )
+    else:
+        kernel_parameters = {}
 
     guidance_images = [
         Image.open(
@@ -344,20 +365,99 @@ def load_guidance_channels(
     guidance_channels = []
 
     for layer_size in layer_sizes:
-        if method == "simple":
-            guidance_channels.append(torch.stack([
-                input_transforms(
-                    layer_size,
-                    [0],
-                    [1],
-                    1,
-                    device
-                )(img)
-                for img in guidance_images
-            ]))
-        elif method == "all":
-            raise NotImplementedError("Not implemented")
-        elif method == "inside":
-            raise NotImplementedError("Not implemented")
+        channel = torch.stack([
+            input_transforms(
+                layer_size,
+                [0],
+                [1],
+                1,
+                device
+            )(img)
+            for img in guidance_images
+        ], dim=2).squeeze(0)
+
+        if threshold:
+            channel[channel > threshold] = 1
+            channel[channel <= threshold] = 0
+
+        guidance_channels.append(channel)
+
+    if method in ("all", "inside"):
+        # This is a workaround to the fact that PyTorch padding can only be
+        # zero-padding, but we would need one-padding in order to avoid
+        # unwanted side-effects at image border
+        for i, channel in enumerate(guidance_channels):
+            guidance_channels[i] = 1 - channel
+
+        # Convolutional detectors for each style layer
+        detectors = []
+        for i, l in enumerate(model.style_layers):
+            parameter = {}
+
+            # Look for the Conv2d layer right before our style layer
+            search_range = range(
+                model.style_layers[i-1]+1 if i > 0 else 0,
+                l+1
+            )
+            for i in reversed(search_range):
+                conv_layer = model.features[i]
+                if isinstance(conv_layer, torch.nn.Conv2d):
+                    parameter["kernel_size"] = conv_layer.kernel_size \
+                        if "kernel_size" not in kernel_parameters \
+                        else kernel_parameters["kernel_size"]
+                    parameter["stride"] = conv_layer.stride
+                    parameter["padding"] = conv_layer.padding \
+                        if "padding" not in kernel_parameters \
+                        else kernel_parameters["padding"]
+                    parameter["dilation"] = conv_layer.dilation \
+                        if "dilation" not in kernel_parameters \
+                        else kernel_parameters["dilation"]
+                    break
+            if len(parameter) == 0:
+                raise RuntimeError(
+                    f"No Conv2d layer found for style layer {l}"
+                )
+
+            # Create a single kernel with weights to 1
+            detector = torch.nn.Conv2d(1, 1, bias=False, **parameter)
+            detector.weight = torch.nn.Parameter(
+                torch.ones_like(detector.weight),
+                requires_grad=False
+            )
+            detector = detector.to(device)
+            detectors.append(detector)
+
+        # Apply the kernel to every guidance channel in each layer
+        for i, detector in enumerate(detectors):
+            for c, _ in enumerate(guidance_images):
+                divisor = functools.reduce(
+                    lambda a, b: a*b,
+                    detector.kernel_size
+                )
+                guidance_channels[i][:, c] = detector(
+                    guidance_channels[i][:, c].unsqueeze(1)
+                ).squeeze(1).detach().div(divisor)
+
+            # All: Propagate to neurons that overlap with the guidance region
+            # Inside: Propagate to neurons that are entirely in the region
+            if method == "all":
+                guidance_channels[i][guidance_channels[i] != 1] = 0
+            else:
+                guidance_channels[i][guidance_channels[i] != 0] = 1
+
+        # Reverse again the channels (see above)
+        for i, channel in enumerate(guidance_channels):
+            guidance_channels[i] = 1 - channel
 
     return guidance_channels
+
+
+def disp_guidance(guidance, i, layer=None):
+    import matplotlib.pyplot as plt
+    if layer is None:
+        for g in guidance:
+            plt.imshow(g.cpu().squeeze()[i], cmap="gray")
+            plt.show()
+    else:
+        plt.imshow(guidance[layer].cpu().squeeze()[i], cmap="gray")
+        plt.show()
