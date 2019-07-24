@@ -93,6 +93,7 @@ Or build and install the wheel file with the `--editable` flag.
 # TODO
 
 * Documentation.
+* Implement total variation loss (see [this](https://www.tensorflow.org/beta/tutorials/generative/style_transfer)).
 * Implement guided sums.
 * Examine if we need to add a fallback global guidance channel for pixels that aren't covered by any channel (briefly mentioned in the article but very vague).
 * For guidance channels propagation: investigate what they mean by "erosion" (see supplementary material document linked in the original article). (Short answer: yes, it is needed, with bigger kernel sizes the style transfer isn't performed at the boundary.)
