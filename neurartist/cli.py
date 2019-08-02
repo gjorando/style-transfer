@@ -281,7 +281,7 @@ def main(
         output = content_image.clone()
     else:
         output = neurartist.utils.input_transforms(
-            img_size,
+            content_image.shape[-2:],  # Use actual content size
             device=device
         )(Image.open(random_init_path))
 
