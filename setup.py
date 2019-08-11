@@ -4,7 +4,7 @@
 
 import os
 import importlib
-import sys
+from pypandoc import convert_file
 from setuptools import setup, find_packages
 
 
@@ -47,20 +47,12 @@ def long_description(*tree):
     result, we need to convert README.md on the fly.
     """
 
-    try:
-        from pypandoc import convert_file
-        tree_join = os.path.join(os.path.dirname(__file__), *tree)
-        rst_readme = convert_file(tree_join, 'rst')
-        rst_path = "{}.rst".format(os.path.splitext(tree_join)[0])
-        with open(rst_path, "w") as file:
-            file.write(rst_readme)
-        return rst_readme
-    except ImportError:
-        sys.stderr.write(
-            "warning: pypandoc module not found,"
-            "README.md couldn't be converted.\n"
-        )
-        return read(*tree)
+    tree_join = os.path.join(os.path.dirname(__file__), *tree)
+    rst_readme = convert_file(tree_join, 'rst')
+    rst_path = "{}.rst".format(os.path.splitext(tree_join)[0])
+    with open(rst_path, "w") as file:
+        file.write(rst_readme)
+    return rst_readme
 
 
 setup(
