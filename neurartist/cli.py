@@ -18,6 +18,11 @@ def odd_int(value):
         raise ValueError("Odd number required")
     return value
 
+def threshold_or_neg(value):
+    value = float(value)
+    if value > 1:
+        raise ValueError("Value should be between 0 and 1, or negative")
+    return value
 
 @click.command()
 # General
@@ -132,6 +137,13 @@ def odd_int(value):
     help="Propagation method for guidance channels"
 )
 @click.option(
+    "--guidance-threshold",
+    default=.5,
+    type=threshold_or_neg,
+    help="Threshold between 0 and 1 for guidance channels thresholding, or any"
+         " negative value for non thresholding"
+)
+@click.option(
     "--guidance-propagation-kernel-size",
     default=None,
     type=odd_int,
@@ -176,6 +188,7 @@ def main(
     content_guidance_path,
     style_guidance_path,
     guidance_propagation_method,
+    guidance_threshold,
     guidance_propagation_kernel_size,
     guidance_propagation_dilation,
     device,
@@ -193,6 +206,10 @@ def main(
         raise ValueError(
             "content_guidance and style_guidance must be both set or both None"
         )
+    
+    # If a negative value is set, no thresholding is done
+    if guidance_threshold < 0:
+        guidance_threshold = None
 
     # If the output path is a directory, we append a generated filename
     if os.path.isdir(output_path):
@@ -260,6 +277,7 @@ def main(
             img_size,
             model,
             method=guidance_propagation_method,
+            threshold=guidance_threshold,
             kernel_parameters=kernel_params,
             device=device
         )
