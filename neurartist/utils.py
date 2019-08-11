@@ -305,6 +305,7 @@ def load_guidance_channels(
     method="simple",
     threshold=.5,
     kernel_parameters=None,
+    fallback_channel=None,
     device="cpu"
 ):
     """
@@ -316,13 +317,21 @@ def load_guidance_channels(
     :param img_size: Target width of the transformed images.
     :param model: Style transfer model, needed to broadcast guidance dimensions
     for each style layer.
-    :param method: Propagation method.
+    :param method: Propagation method, either:
+        * simple: no detection, downsample guidance channels to target size
+        for each layer;
+        * inside: downsampling + propagate guidance channels only to neurons
+        whose receptive field is entirely inside the guidance region;
+        * all: downsampling + propagate guidance channels to all neurons that
+        overlap the guidance region.
     :param threshold: Thresholding value (if None, no thresholding is done and
     guidance layers may have non fully black or white values).
     :param kernel_parameters: Optional parameters to fix the kernel attributes
     of detection method, instead of using kernel attributes from the model.
     This is only relevant for "inside" and "all" methods, and should have the
     following keys: "kernel_size" and "dilation". Each parameter is a 2-tuple.
+    :param fallback_channel: If True, a fallback channel is added, being
+    1-sum(guidance channels), so that it covers pixels that were not covered.
     :param device: Device onto which transfer the images.
     :return: Loaded channels.
     """
@@ -365,22 +374,32 @@ def load_guidance_channels(
     guidance_channels = []
 
     for layer_size in layer_sizes:
-        channel = torch.stack([
-            input_transforms(
-                layer_size,
-                [0],
-                [1],
-                1,
-                device
-            )(img)
-            for img in guidance_images
-        ], dim=2).squeeze(0)
+        channel = torch.stack(
+            [
+                input_transforms(
+                    layer_size,
+                    [0],
+                    [1],
+                    1,
+                    device
+                )(img)
+                for img in guidance_images
+            ] + (
+                [torch.ones(1, 1, *layer_size, device=device)]
+                if fallback_channel
+                else []
+            ),
+            dim=2
+        ).squeeze(0)
 
         if threshold:
             channel[channel > threshold] = 1
             channel[channel <= threshold] = 0
 
         guidance_channels.append(channel)
+
+    num_channels = len(guidance_images)
+    del guidance_images
 
     if method in ("all", "inside"):
         # This is a workaround to the fact that PyTorch padding can only be
@@ -429,7 +448,7 @@ def load_guidance_channels(
 
         # Apply the kernel to every guidance channel in each layer
         for i, detector in enumerate(detectors):
-            for c, _ in enumerate(guidance_images):
+            for c in range(num_channels):
                 divisor = functools.reduce(
                     lambda a, b: a*b,
                     detector.kernel_size
@@ -448,6 +467,17 @@ def load_guidance_channels(
         # Reverse again the channels (see above)
         for i, channel in enumerate(guidance_channels):
             guidance_channels[i] = 1 - channel
+
+    # If we have a fallback channel
+    if fallback_channel:
+        # For each channel in each layer, the fallback channel is
+        # 1-sum(guidance channels)
+        for i, _ in enumerate(guidance_channels):
+            for c in range(num_channels):
+                guidance_channels[i][:, -1] -= guidance_channels[i][:, c]
+
+        # Truncate values <0
+        guidance_channels[i][guidance_channels[i] < 0] = 0
 
     return guidance_channels
 

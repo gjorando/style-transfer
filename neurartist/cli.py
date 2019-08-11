@@ -206,7 +206,7 @@ def main(
         raise ValueError(
             "content_guidance and style_guidance must be both set or both None"
         )
-    
+
     # If a negative value is set, no thresholding is done
     if guidance_threshold < 0:
         guidance_threshold = None
@@ -279,6 +279,7 @@ def main(
             method=guidance_propagation_method,
             threshold=guidance_threshold,
             kernel_parameters=kernel_params,
+            fallback_channel=True,
             device=device
         )
         style_guidance = neurartist.utils.load_guidance_channels(
@@ -287,6 +288,7 @@ def main(
             model,
             method=guidance_propagation_method,
             kernel_parameters=kernel_params,
+            fallback_channel=True,
             device=device
         )
 
