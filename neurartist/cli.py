@@ -5,6 +5,7 @@ Entrypoints.
 """
 
 import os
+import json
 from datetime import datetime
 import torch
 import click
@@ -18,11 +19,30 @@ def odd_int(value):
         raise ValueError("Odd number required")
     return value
 
+
 def threshold_or_neg(value):
     value = float(value)
     if value > 1:
         raise ValueError("Value should be between 0 and 1, or negative")
     return value
+
+
+def list_parameter(value_type=int):
+    def list_parameter_(param_value):
+        nonlocal value_type
+
+        if param_value is None:
+            result = None
+        else:
+            result = json.loads(param_value)
+            assert isinstance(result, list), "parameter should be a list"
+            for i, v in enumerate(result):
+                result[i] = value_type(v)
+
+        return result
+
+    return list_parameter_
+
 
 @click.command()
 # General
@@ -85,21 +105,25 @@ def threshold_or_neg(value):
 @click.option(
     "--content-layers",
     default=None,
+    type=list_parameter(),
     help="Indexes of content layers (as a string representing a list)"
 )
 @click.option(
     "--style-layers",
     default=None,
+    type=list_parameter(),
     help="Indexes of style layers (as a string representing a list)"
 )
 @click.option(
     "--content-weights",
     default=None,
+    type=list_parameter(float),
     help="Content weights (as a string representing a list)"
 )
 @click.option(
     "--style-weights",
     default=None,
+    type=list_parameter(float),
     help="Style weights (as a string representing a list)"
 )
 # Color control
@@ -217,18 +241,6 @@ def main(
             output_path,
             "{}.png".format(datetime.now().strftime('%Y-%m-%dT%H:%M:%S'))
         )
-
-    # Load argument lists
-    content_layers = neurartist.utils.validate_list_parameter(content_layers)
-    content_weights = neurartist.utils.validate_list_parameter(
-        content_weights,
-        float
-    )
-    style_layers = neurartist.utils.validate_list_parameter(style_layers)
-    style_weights = neurartist.utils.validate_list_parameter(
-        style_weights,
-        float
-    )
 
     # Automatic detection of optimal device
     if device is None:

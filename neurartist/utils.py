@@ -5,34 +5,12 @@
 """
 
 import os
-import json
 import functools
 import torch
 import torchvision
 from neurartist import _package_manager as _pm
 from PIL import Image
 from PIL import ImageStat
-
-
-@_pm.export
-def validate_list_parameter(param_value, value_type=int):
-    """
-    Validate a command line parameter being a literal json list (as a string).
-
-    :param param_value: Raw input string.
-    :param value_type: Target type of each element of the list.
-    :return: Parsed list.
-    """
-
-    if param_value is None:
-        result = None
-    else:
-        result = json.loads(param_value)
-        assert isinstance(result, list), "parameter should be a list"
-        for i, v in enumerate(result):
-            result[i] = value_type(v)
-
-    return result
 
 
 @_pm.export
