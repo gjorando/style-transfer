@@ -306,7 +306,7 @@ def main(
 
     # Initialize the optimizer
     if random_init:
-        # despite what's described in the article, initializing the gradient
+        # Despite what's described in the article, initializing the gradient
         # descent with a random input doesn't produce good results at all
         output = torch.randn(content_image.size()).type_as(content_image.data)
     elif random_init_path is None:

@@ -261,6 +261,8 @@ def color_histogram_matching(content_image, style_image):
 
     # For each pixel of the style image, we get the histogram matched version
     # with p' = chm_A*p+chm_b
+    # chm_A = sqrt(content_cov)@(1/sqrt(style_cov))
+    # chm_B = content_means - chm_A@style_means
     chm_A = torch.mm(tensor_pow(content_cov, 0.5), tensor_pow(style_cov, -0.5))
     chm_b = content_means - torch.mm(chm_A, style_means)
 
